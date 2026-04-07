@@ -4,7 +4,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY pyproject.toml README.md openenv.yaml inference.py uv.lock ./
+COPY pyproject.toml README.md openenv.yaml inference.py ./
 COPY __init__.py models.py client.py ./
 COPY server ./server/
 

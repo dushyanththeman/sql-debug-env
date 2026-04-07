@@ -1,0 +1,42 @@
+name: sql-debug-env
+description: "Debug and optimise broken SQL queries — simulating a real data engineering workflow"
+version: "0.1.0"
+author: "Dushyanth S"
+tags:
+  - openenv
+  - sql
+  - data-engineering
+  - debugging
+  - optimization
+
+tasks:
+  - id: syntax-fix-001
+    description: "Fix a SQL query with syntax errors (misspelled keywords)"
+    difficulty: easy
+    max_steps: 5
+
+  - id: join-optimization-001
+    description: "Rewrite an N+1 correlated subquery as an efficient JOIN"
+    difficulty: medium
+    max_steps: 6
+
+  - id: aggregation-bug-001
+    description: "Fix silent double-counting caused by JOIN fan-out before GROUP BY"
+    difficulty: hard
+    max_steps: 8
+  - id: window-rank-001
+    description: "Fix window frame boundary bug in running total query"
+    difficulty: hard
+    max_steps: 8
+  - id: null-handling-001
+    description: "Fix NULL handling bug — WHERE column != value silently excludes NULL rows"
+    difficulty: medium
+    max_steps: 8
+  - id: wrong-join-001
+    description: "Fix wrong JOIN type — INNER JOIN silently drops customers with zero orders"
+    difficulty: medium
+    max_steps: 8
+
+server:
+  port: 8000
+  dockerfile: server/Dockerfile

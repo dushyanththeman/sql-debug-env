@@ -139,16 +139,17 @@ class SqlDebugEnvironment(Environment[SqlDebugAction, SqlDebugObservation, SqlDe
         self._step_count += 1
 
         step_reward = float(raw_score)
-        if raw_score >= 1.0:
+        if raw_score >= 0.99:
             # Efficiency bonus: reward solving faster. Max +0.2 on step 1, 0 by step 8
             max_steps = int(task["max_steps"])
             efficiency_bonus = 0.2 * max(0, (max_steps - self._step_count) / max_steps)
             step_reward = min(1.0, raw_score + efficiency_bonus)
+        step_reward = max(0.01, min(0.99, step_reward))
 
         self._cumulative_score += step_reward
         self._best_score = max(self._best_score, raw_score)
 
-        done = bool(raw_score >= 1.0 or self._step_count >= max_steps)
+        done = bool(raw_score >= 0.99 or self._step_count >= max_steps)
         self._done = done
 
         info = {

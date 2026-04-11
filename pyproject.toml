@@ -30,4 +30,4 @@ packages = ["server"]
 dev-dependencies = ["pytest>=7.0.0"]
 
 [project.scripts]
-server = "server.app:app"
+server = "server.app:main"

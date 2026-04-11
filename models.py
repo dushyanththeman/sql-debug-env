@@ -6,11 +6,17 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from openenv.core.env_server.types import Action, Observation, State
 from pydantic import Field
 
+try:
+    from openenv.core.models import BaseAction, BaseObservation, BaseState
+except ImportError:
+    from openenv.core.env_server.types import Action as BaseAction
+    from openenv.core.env_server.types import Observation as BaseObservation
+    from openenv.core.env_server.types import State as BaseState
 
-class SqlDebugAction(Action):
+
+class SqlDebugAction(BaseAction):
     """Agent action: a single corrected SQL string."""
 
     fixed_query: str = Field(
@@ -18,7 +24,7 @@ class SqlDebugAction(Action):
     )
 
 
-class SqlDebugObservation(Observation):
+class SqlDebugObservation(BaseObservation):
     """Observation returned after reset or each step."""
 
     task_id: str = Field(description="Which task is currently active")
@@ -58,7 +64,7 @@ class SqlDebugObservation(Observation):
     )
 
 
-class SqlDebugState(State):
+class SqlDebugState(BaseState):
     """Serializable environment state for clients."""
 
     task_id: str = Field(description="Active task identifier")

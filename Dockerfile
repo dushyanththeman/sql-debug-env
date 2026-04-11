@@ -1,19 +1,20 @@
-# Build from the environment root (directory that contains pyproject.toml and server/):
-#   docker build -f server/Dockerfile -t sql-debug-env .
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /app/env
 
-COPY pyproject.toml README.md openenv.yaml inference.py ./
-COPY __init__.py models.py client.py ./
-COPY server ./server/
+RUN pip install --no-cache-dir uv
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+COPY pyproject.toml ./
+COPY . .
+
+RUN uv pip install --system --no-cache openenv-core && \
+    uv pip install --system --no-cache -e .
+
+ENV PYTHONPATH="/app/env:$PYTHONPATH"
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-CMD ["uvicorn", "sql_debug_env.server.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

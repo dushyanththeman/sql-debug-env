@@ -6,9 +6,9 @@ import sqlite3
 
 import pytest
 
-from sql_debug_env.server.db import DatabaseManager
-from sql_debug_env.server.graders import grade_submission
-from sql_debug_env.server.tasks import task_1_syntax, task_2_join, task_3_aggregation
+from server.db import DatabaseManager
+from server.graders import grade_submission
+from server.tasks import task_1_syntax, task_2_join, task_3_aggregation
 
 
 def _db_with_task(seed_fn) -> DatabaseManager:
@@ -18,10 +18,10 @@ def _db_with_task(seed_fn) -> DatabaseManager:
 
 
 def test_task1_wrong_query_zero() -> None:
-    """A syntactically invalid query should score 0.0."""
+    """A syntactically invalid query should score the minimum clamped value."""
     db = _db_with_task(task_1_syntax.seed_database)
     score = grade_submission("SELECT * FROM nowhere", task_1_syntax.TASK_CONFIG, db)
-    assert score == 0.0
+    assert score == 0.01
     db.close()
 
 
@@ -38,23 +38,23 @@ def test_task1_runs_wrong_rows_partial() -> None:
 
 
 def test_task1_perfect_score() -> None:
-    """The reference fix should reach 1.0."""
+    """The reference fix should reach the maximum clamped score."""
     db = _db_with_task(task_1_syntax.seed_database)
     sql = "SELECT name, department FROM employees WHERE active = 1;"
     score = grade_submission(sql, task_1_syntax.TASK_CONFIG, db)
-    assert score == 1.0
+    assert score == 0.99
     db.close()
 
 
 def test_destructive_query_blocked() -> None:
-    """Destructive statements never execute and always score 0.0."""
+    """Destructive statements never execute and always score the minimum clamped value."""
     db = _db_with_task(task_1_syntax.seed_database)
     score = grade_submission(
         "DROP TABLE employees;",
         task_1_syntax.TASK_CONFIG,
         db,
     )
-    assert score == 0.0
+    assert score == 0.01
     conn = db.conn
     assert conn is not None
     cur = conn.execute(
@@ -73,7 +73,7 @@ def test_task2_join_expected() -> None:
         "ORDER BY o.created_at DESC;"
     )
     score = grade_submission(sql, task_2_join.TASK_CONFIG, db)
-    assert score == 1.0
+    assert score == 0.99
     db.close()
 
 
@@ -89,5 +89,5 @@ def test_task3_aggregation_fix() -> None:
         "ORDER BY total_spent DESC;"
     )
     score = grade_submission(sql, task_3_aggregation.TASK_CONFIG, db)
-    assert score == 1.0
+    assert score == 0.99
     db.close()

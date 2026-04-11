@@ -11,6 +11,10 @@ from .db import DatabaseManager
 
 _NUMERIC_TOLERANCE = 0.01
 
+
+def _clamp(score: float) -> float:
+    return max(0.01, min(0.99, float(score)))
+
 _DESTRUCTIVE_PATTERN = re.compile(
     r"\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|ATTACH|DETACH|VACUUM|PRAGMA\s+writable_schema)\b",
     re.IGNORECASE,
@@ -94,11 +98,6 @@ def _plan_qualifies_for_bonus(plan: str) -> bool:
         return False
 
 
-def _clamp_score(raw_score: float) -> float:
-    """Clamp scores to validator-safe open interval (0, 1)."""
-    return max(0.01, min(0.99, raw_score))
-
-
 def grade_submission(
     fixed_query: str,
     task_config: Dict[str, Any],
@@ -113,7 +112,7 @@ def grade_submission(
     Aggregation task: 0.2 run + 0.3 row count + 0.5 value match.
     """
     score, _ = grade_submission_with_feedback(fixed_query, task_config, db_manager)
-    return _clamp_score(score)
+    return _clamp(score)
 
 
 def grade_submission_with_feedback(
@@ -129,11 +128,11 @@ def grade_submission_with_feedback(
     try:
         task_id = str(task_config.get("TASK_ID", ""))
         if _is_destructive(fixed_query):
-            return _clamp_score(0.01), "Destructive queries are not permitted"
+            return _clamp(0.0), "Destructive queries are not permitted"
 
         rows, err = db_manager.run_query(fixed_query)
         if err is not None:
-            return _clamp_score(0.01), err
+            return _clamp(0.0), err
 
         score = 0.2
         expected_count = int(task_config["expected_row_count"])
@@ -155,7 +154,7 @@ def grade_submission_with_feedback(
             if expected_count > 0:
                 proximity = 1.0 - min(abs(actual_count - expected_count) / expected_count, 1.0)
                 score += round(0.15 * proximity, 4)  # up to 0.15 partial instead of full 0.3
-            return _clamp_score(score), None
+            return _clamp(score), None
 
         score += 0.3
         expected_rows = task_config["expected_rows"]
@@ -168,19 +167,19 @@ def grade_submission_with_feedback(
             match = _rows_close(rows, expected_rows, aggregation_numeric=False)
 
         if not match:
-            return _clamp_score(score), None
+            return _clamp(score), None
 
         score += 0.3
         if bool(task_config.get("check_plan", False)):
             plan = db_manager.explain_query_plan(fixed_query)
             if _plan_qualifies_for_bonus(plan):
                 score += 0.2
-            return _clamp_score(min(1.0, score)), None
+            return _clamp(min(1.0, score)), None
 
         score += 0.2
-        return _clamp_score(min(1.0, score)), None
+        return _clamp(min(1.0, score)), None
     except Exception as exc:
-        return _clamp_score(0.01), str(exc)
+        return _clamp(0.0), str(exc)
 
 
 def _score_aggregation(
@@ -198,7 +197,7 @@ def _score_aggregation(
         if expected_count > 0:
             proximity = 1.0 - min(abs(actual_count - expected_count) / expected_count, 1.0)
             score += round(0.15 * proximity, 4)
-        return _clamp_score(score), None
+        return _clamp(score), None
 
     score += 0.3
     expected_rows = task_config["expected_rows"]
@@ -209,11 +208,11 @@ def _score_aggregation(
         match = _rows_close(rows, expected_rows, aggregation_numeric=True)
 
     if not match:
-        return _clamp_score(score), None
+        return _clamp(score), None
 
     score += 0.5
     _ = db_manager.explain_query_plan(fixed_query)
-    return _clamp_score(min(1.0, score)), None
+    return _clamp(min(1.0, score)), None
 
 
 def _rows_ordered_match(

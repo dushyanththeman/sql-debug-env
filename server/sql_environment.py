@@ -7,17 +7,20 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from openenv.core.env_server.interfaces import Environment
+try:
+    from ..models import SqlDebugAction, SqlDebugObservation, SqlDebugState
+except ImportError:
+    from models import SqlDebugAction, SqlDebugObservation, SqlDebugState
+
+from openenv.core.env_server import Environment
 from openenv.core.env_server.types import EnvironmentMetadata
 
-from sql_debug_env.models import SqlDebugAction, SqlDebugObservation, SqlDebugState
-
 from .db import DatabaseManager
-from .graders import grade_submission_with_feedback, is_destructive_sql
+from .graders import _clamp, grade_submission_with_feedback, is_destructive_sql
 from .tasks import TASK_ORDER, TASK_REGISTRY
 
 
-class SqlDebugEnvironment(Environment[SqlDebugAction, SqlDebugObservation, SqlDebugState]):
+class SqlDebugEnvironment(Environment):
     """
     Episodic environment where an agent submits SQL and receives graded feedback.
 
@@ -144,7 +147,7 @@ class SqlDebugEnvironment(Environment[SqlDebugAction, SqlDebugObservation, SqlDe
             max_steps = int(task["max_steps"])
             efficiency_bonus = 0.2 * max(0, (max_steps - self._step_count) / max_steps)
             step_reward = min(1.0, raw_score + efficiency_bonus)
-        step_reward = max(0.01, min(0.99, step_reward))
+        step_reward = _clamp(step_reward)
 
         self._cumulative_score += step_reward
         self._best_score = max(self._best_score, raw_score)
@@ -183,7 +186,7 @@ class SqlDebugEnvironment(Environment[SqlDebugAction, SqlDebugObservation, SqlDe
         return EnvironmentMetadata(
             name="sql-debug-env",
             description="Debug and optimise broken SQL queries against a live SQLite database.",
-            version="0.1.0",
+            version="1.0.0",
             author="Dushyanth S",
         )
 

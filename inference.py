@@ -14,12 +14,17 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from sql_debug_env import SqlDebugAction, SqlDebugEnv
+try:
+    from models import SqlDebugAction
+    from client import SqlDebugEnv
+except ImportError:
+    from sql_debug_env.models import SqlDebugAction
+    from sql_debug_env.client import SqlDebugEnv
 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME", "sql-debug-env")
+HF_TOKEN = os.getenv("HF_TOKEN")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
 MAX_STEPS = 8
 SUCCESS_THRESHOLD = 0.8
 
@@ -45,6 +50,11 @@ _SYSTEM_PROMPT = textwrap.dedent(
     5. For aggregation bugs, check if JOINs are causing fan-out before GROUP BY.
     """
 ).strip()
+
+
+def _normalize_score_display(raw: float) -> float:
+    """Map internal (0.01, 0.99) rewards to [0.0, 1.0] for logging."""
+    return max(0.0, min(1.0, (float(raw) - 0.01) / 0.98))
 
 
 def _extract_sql(text: str) -> str:
@@ -95,7 +105,6 @@ async def _run_one_task(
         flush=True,
     )
     obs = None
-    total_score = 0.0
     steps_used = 0
     success = False
 
@@ -155,30 +164,30 @@ async def _run_one_task(
             )
 
             if done:
-                success = reward >= SUCCESS_THRESHOLD or obs.score_so_far >= SUCCESS_THRESHOLD
+                success = _normalize_score_display(reward) >= SUCCESS_THRESHOLD
                 break
 
         total_score = obs.score_so_far if obs is not None else 0.0
         return total_score, steps_used, rewards
     finally:
         reward_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else ""
-        final_score = obs.score_so_far if obs is not None else 0.0
+        if rewards:
+            final_display = _normalize_score_display(max(rewards))
+        else:
+            final_display = 0.0
         print(
             f"[END] success={str(success).lower()} steps={steps_used} "
-            f"score={final_score:.3f} rewards={reward_str}",
+            f"score={final_display:.3f} rewards={reward_str}",
             flush=True,
         )
 
 
 async def main_async() -> None:
-    """Run all three tasks sequentially against a live server."""
-    if API_KEY is None:
-        raise RuntimeError(
-            "HF_TOKEN or API_KEY must be set for inference (LLM calls require credentials)."
-        )
+    """Run all six tasks sequentially against a live server."""
+    if HF_TOKEN is None:
+        raise RuntimeError("HF_TOKEN must be set for inference (LLM calls require credentials).")
 
-    base_url = os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
-    client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     task_ids = [
         "syntax-fix-001",
@@ -190,7 +199,7 @@ async def main_async() -> None:
     ]
     scores: List[float] = []
 
-    async with SqlDebugEnv(base_url=base_url) as env:
+    async with SqlDebugEnv(base_url=ENV_BASE_URL) as env:
         for tid in task_ids:
             total_score, _, _ = await _run_one_task(env, client, tid, MODEL_NAME)
             scores.append(total_score)
@@ -201,7 +210,7 @@ async def main_async() -> None:
 
 
 def main() -> None:
-    """Entry point for ``python -m sql_debug_env.inference``."""
+    """Entry point for ``python inference.py`` from the environment root."""
     asyncio.run(main_async())
 
 

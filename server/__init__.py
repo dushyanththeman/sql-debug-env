@@ -1,1 +1,1 @@
-"""OpenEnv SQL debug server package."""
+# sql-debug-env server package

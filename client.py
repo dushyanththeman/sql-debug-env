@@ -1,24 +1,50 @@
 """
-WebSocket client for the SQL debug environment.
+WebSocket client for the SQL debug environment (OpenEnv EnvClient).
+
+Connects to the running server at ``ENV_BASE_URL`` (default ``http://127.0.0.1:8000``).
+Uses WebSocket sessions so multi-step episodes keep server-side state.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+import os
+from typing import Any, Dict, Optional
 
 from openenv.core.client_types import StepResult
 from openenv.core.env_client import EnvClient
 
-from sql_debug_env.models import SqlDebugAction, SqlDebugObservation, SqlDebugState
+try:
+    from models import SqlDebugAction, SqlDebugObservation, SqlDebugState
+except ImportError:
+    from sql_debug_env.models import SqlDebugAction, SqlDebugObservation, SqlDebugState
 
 
 class SqlDebugEnv(EnvClient[SqlDebugAction, SqlDebugObservation, SqlDebugState]):
     """
-    Async client that mirrors the Echo/OpenEnv pattern for typed actions and observations.
+    Async client that mirrors the OpenEnv pattern for typed actions and observations.
 
     Use ``async with SqlDebugEnv(base_url=...) as env`` or ``SqlDebugEnv(...).sync()``
     for synchronous code.
     """
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        connect_timeout_s: float = 10.0,
+        message_timeout_s: float = 60.0,
+        max_message_size_mb: float = 100.0,
+        provider: Any = None,
+        mode: Optional[str] = None,
+    ) -> None:
+        resolved = base_url or os.getenv("ENV_BASE_URL", "http://127.0.0.1:8000")
+        super().__init__(
+            resolved,
+            connect_timeout_s=connect_timeout_s,
+            message_timeout_s=message_timeout_s,
+            max_message_size_mb=max_message_size_mb,
+            provider=provider,
+            mode=mode,
+        )
 
     def _step_payload(self, action: SqlDebugAction) -> Dict[str, Any]:
         """Serialize the action for the WebSocket ``step`` message."""

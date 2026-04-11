@@ -28,3 +28,6 @@ packages = ["server"]
 
 [tool.uv]
 dev-dependencies = ["pytest>=7.0.0"]
+
+[project.scripts]
+server = "server.app:app"

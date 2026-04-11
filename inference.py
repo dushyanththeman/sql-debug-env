@@ -17,9 +17,11 @@ from openai import OpenAI
 try:
     from models import SqlDebugAction
     from client import SqlDebugEnv
+    from server.graders import _clamp
 except ImportError:
     from sql_debug_env.models import SqlDebugAction
     from sql_debug_env.client import SqlDebugEnv
+    from sql_debug_env.server.graders import _clamp
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
@@ -53,8 +55,14 @@ _SYSTEM_PROMPT = textwrap.dedent(
 
 
 def _normalize_score_display(raw: float) -> float:
-    """Map internal (0.01, 0.99) rewards to [0.0, 1.0] for logging."""
-    return max(0.0, min(1.0, (float(raw) - 0.01) / 0.98))
+    """Map internal (0.01, 0.99) rewards to an open interval — never exactly 0.0 or 1.0."""
+    x = (float(raw) - 0.01) / 0.98
+    return max(0.001, min(0.999, x))
+
+
+def _clamp_aggregate(score: float) -> float:
+    """Clamp aggregate / averaged values used for reporting (strictly between 0 and 1)."""
+    return max(0.01, min(0.99, float(score)))
 
 
 def _extract_sql(text: str) -> str:
@@ -97,8 +105,8 @@ async def _run_one_task(
     client: OpenAI,
     task_id: str,
     model_name: str,
-) -> tuple[float, int, List[float]]:
-    """Run a single task and return (final_score, steps_used, rewards)."""
+) -> tuple[float, int, List[float], float]:
+    """Run a single task; returns cumulative score, steps, rewards, normalized episode score."""
     rewards: List[float] = []
     print(
         f"[START] task={task_id} env=sql-debug-env model={model_name}",
@@ -107,6 +115,8 @@ async def _run_one_task(
     obs = None
     steps_used = 0
     success = False
+    total_score = 0.0
+    episode_norm = _normalize_score_display(_clamp(0.0))
 
     try:
         result = await env.reset(task_id=task_id)
@@ -152,7 +162,9 @@ async def _run_one_task(
 
             step_result = await env.step(SqlDebugAction(fixed_query=sql))
             obs = step_result.observation
-            reward = float(step_result.reward or 0.0)
+            reward = _clamp(
+                float(step_result.reward if step_result.reward is not None else 0.0)
+            )
             done = bool(step_result.done)
             err = obs.error_message
             rewards.append(reward)
@@ -167,19 +179,20 @@ async def _run_one_task(
                 success = _normalize_score_display(reward) >= SUCCESS_THRESHOLD
                 break
 
-        total_score = obs.score_so_far if obs is not None else 0.0
-        return total_score, steps_used, rewards
+        total_score = float(obs.score_so_far) if obs is not None else 0.0
     finally:
-        reward_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else ""
         if rewards:
-            final_display = _normalize_score_display(max(rewards))
+            episode_norm = _normalize_score_display(max(rewards))
         else:
-            final_display = 0.0
+            episode_norm = _normalize_score_display(_clamp(0.0))
+        reward_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else ""
         print(
             f"[END] success={str(success).lower()} steps={steps_used} "
-            f"score={final_display:.3f} rewards={reward_str}",
+            f"score={episode_norm:.3f} rewards={reward_str}",
             flush=True,
         )
+
+    return total_score, steps_used, rewards, episode_norm
 
 
 async def main_async() -> None:
@@ -201,11 +214,12 @@ async def main_async() -> None:
 
     async with SqlDebugEnv(base_url=ENV_BASE_URL) as env:
         for tid in task_ids:
-            total_score, _, _ = await _run_one_task(env, client, tid, MODEL_NAME)
-            scores.append(total_score)
+            _, _, _, episode_norm = await _run_one_task(env, client, tid, MODEL_NAME)
+            scores.append(episode_norm)
 
     if scores:
-        avg = sum(scores) / len(scores)
+        avg_raw = sum(scores) / len(scores)
+        avg = _clamp_aggregate(avg_raw)
         print(f"Average score across tasks: {avg:.3f}", flush=True)
 
 

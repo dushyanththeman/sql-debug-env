@@ -13,6 +13,7 @@ _NUMERIC_TOLERANCE = 0.01
 
 
 def _clamp(score: float) -> float:
+    """Clamp score to strictly (0.01, 0.99) - never exactly 0.0 or 1.0"""
     return max(0.01, min(0.99, float(score)))
 
 _DESTRUCTIVE_PATTERN = re.compile(

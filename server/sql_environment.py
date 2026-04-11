@@ -61,6 +61,10 @@ class SqlDebugEnvironment(Environment):
     ) -> SqlDebugObservation:
         task = self._current_task
         obs_reward = step_reward if after_step else None
+        # Cumulative can exceed 1.0 across steps; avoid exactly 0.0 when nothing accumulated yet
+        score_so_far = self._cumulative_score
+        if score_so_far <= 0.0:
+            score_so_far = _clamp(0.0)
         return SqlDebugObservation(
             task_id=task["TASK_ID"],
             schema_ddl=task["schema_ddl"],
@@ -72,7 +76,7 @@ class SqlDebugEnvironment(Environment):
             hint=self._get_hint(task),
             step_number=self._step_count,
             max_steps=int(task["max_steps"]),
-            score_so_far=self._cumulative_score,
+            score_so_far=score_so_far,
             done=self._done,
             reward=obs_reward,
             step_info=(dict(step_info) if step_info else None),
@@ -146,7 +150,8 @@ class SqlDebugEnvironment(Environment):
             # Efficiency bonus: reward solving faster. Max +0.2 on step 1, 0 by step 8
             max_steps = int(task["max_steps"])
             efficiency_bonus = 0.2 * max(0, (max_steps - self._step_count) / max_steps)
-            step_reward = min(1.0, raw_score + efficiency_bonus)
+            # Cap below 1.0 before final clamp so we never pass exactly 1.0 into _clamp
+            step_reward = min(0.99, raw_score + efficiency_bonus)
         step_reward = _clamp(step_reward)
 
         self._cumulative_score += step_reward
@@ -158,7 +163,7 @@ class SqlDebugEnvironment(Environment):
         info = {
             "task_id": task["TASK_ID"],
             "step": self._step_count,
-            "score": raw_score,
+            "score": _clamp(float(raw_score)),
             "error": feedback_err,
         }
         return self._build_observation(
@@ -171,13 +176,19 @@ class SqlDebugEnvironment(Environment):
     def state(self) -> SqlDebugState:
         """Return structured state for HTTP/WebSocket clients."""
         task = self._current_task
+        total = self._cumulative_score
+        if total <= 0.0:
+            total = _clamp(0.0)
+        best = self._best_score
+        if best <= 0.0:
+            best = _clamp(0.0)
         return SqlDebugState(
             episode_id=self._episode_id,
             step_count=self._step_count,
             task_id=task["TASK_ID"],
-            total_reward=self._cumulative_score,
+            total_reward=total,
             steps_taken=self._step_count,
-            best_score_so_far=self._best_score,
+            best_score_so_far=best,
             is_done=self._done,
         )
 
